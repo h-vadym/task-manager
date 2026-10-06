@@ -1,0 +1,12 @@
+# .NET build artifacts
+[Bb]in/
+[Oo]bj/
+
+# JetBrains Rider / ReSharper user settings
+.idea/
+*.sln.DotSettings.user
+*.user
+*.suo
+
+# Local logs
+*.log
