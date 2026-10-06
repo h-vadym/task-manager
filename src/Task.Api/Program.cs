@@ -1,9 +1,16 @@
 using FluentValidation;
+using Serilog;
 using Task.Api.Contracts;
 using Task.Api.Endpoints;
 using Task.Api.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, services, loggerConfiguration) => loggerConfiguration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .WriteTo.Console());
 
 // Підключаємо спільні налаштування Aspire (Health Checks, OpenTelemetry)
 builder.AddServiceDefaults();

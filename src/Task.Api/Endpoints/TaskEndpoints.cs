@@ -1,6 +1,7 @@
 using FluentValidation;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Serilog;
 using Task.Api.Contracts;
 using Task.Api.Models;
 
@@ -79,6 +80,8 @@ public static class TaskEndpoints
 
         // Асинхронно додаємо задачу до MongoDB.
         await tasks.InsertOneAsync(task, cancellationToken: cancellationToken);
+
+        Log.Information("Task {TaskId} created", task.Id);
 
         // Повертаємо створену задачу зі статусом 201 Created.
         return Results.Json(task, statusCode: StatusCodes.Status201Created);
@@ -165,6 +168,8 @@ public static class TaskEndpoints
             task,
             cancellationToken: cancellationToken);
 
+        Log.Information("Task {TaskId} updated", task.Id);
+
         // Повертаємо оновлену задачу зі статусом 200 OK.
         return Results.Ok(task);
     }
@@ -204,6 +209,8 @@ public static class TaskEndpoints
             x => x.Id == id,
             task,
             cancellationToken: cancellationToken);
+
+        Log.Information("Task {TaskId} deleted", task.Id);
 
         // Повертаємо 204 No Content після успішного видалення.
         return Results.NoContent();
