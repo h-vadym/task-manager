@@ -4,6 +4,8 @@ using MongoDB.Driver;
 using Serilog;
 using Task.Api.Contracts;
 using Task.Api.Models;
+using Task.Api.Events;
+using Task.Api.Messaging;
 
 namespace Task.Api.Endpoints;
 
@@ -49,6 +51,7 @@ public static class TaskEndpoints
         CreateTaskRequest request,
         IValidator<CreateTaskRequest> validator,
         IMongoDatabase database,
+        ITaskEventPublisher eventPublisher,
         CancellationToken cancellationToken)
     {
         // Запускаємо правила FluentValidation для даних, надісланих клієнтом.
@@ -80,6 +83,24 @@ public static class TaskEndpoints
 
         // Асинхронно додаємо задачу до MongoDB.
         await tasks.InsertOneAsync(task, cancellationToken: cancellationToken);
+        
+        await eventPublisher.PublishAsync(
+            new TaskEventEnvelope<TaskCreatedPayload>
+            {
+                EventId = Guid.NewGuid(),
+                EventType = "TaskCreated",
+                OccurredAt = DateTime.UtcNow,
+                AggregateId = task.Id!,
+                AggregateType = "Task",
+                Version = 1,
+                Payload = new TaskCreatedPayload
+                {
+                    TaskId = task.Id!,
+                    Type = task.Type,
+                    Status = task.Status
+                }
+            },
+            cancellationToken);
 
         Log.Information("Task {TaskId} created", task.Id);
 
@@ -92,6 +113,7 @@ public static class TaskEndpoints
         UpdateTaskRequest request,
         IValidator<UpdateTaskRequest> validator,
         IMongoDatabase database,
+        ITaskEventPublisher eventPublisher,
         CancellationToken cancellationToken)
     {
         // Перевіряємо, що параметр маршруту має формат MongoDB ObjectId.
@@ -123,6 +145,12 @@ public static class TaskEndpoints
             // Повертаємо 404, якщо задачі з таким id не існує.
             return Results.NotFound();
         }
+        
+        var oldState = new TaskState
+        {
+            Type = task.Type,
+            Status = task.Status
+        };
 
         // Оновлюємо title лише тоді, коли клієнт передав це поле.
         if (request.Title is not null)
@@ -167,6 +195,27 @@ public static class TaskEndpoints
             x => x.Id == id,
             task,
             cancellationToken: cancellationToken);
+        
+        await eventPublisher.PublishAsync(
+            new TaskEventEnvelope<TaskUpdatedPayload>
+            {
+                EventId = Guid.NewGuid(),
+                EventType = "TaskUpdated",
+                OccurredAt = DateTime.UtcNow,
+                AggregateId = task.Id!,
+                AggregateType = "Task",
+                Version = 1,
+                Payload = new TaskUpdatedPayload
+                {
+                    Old = oldState,
+                    New = new TaskState
+                    {
+                        Type = task.Type,
+                        Status = task.Status
+                    }
+                }
+            },
+            cancellationToken);
 
         Log.Information("Task {TaskId} updated", task.Id);
 
@@ -177,6 +226,7 @@ public static class TaskEndpoints
     private static async Task<IResult> DeleteTask(
         string id,
         IMongoDatabase database,
+        ITaskEventPublisher eventPublisher,
         CancellationToken cancellationToken)
     {
         // Перевіряємо, що параметр маршруту має формат MongoDB ObjectId.
@@ -198,6 +248,13 @@ public static class TaskEndpoints
             // Повертаємо 404, якщо задачі не існує або її вже видалено.
             return Results.NotFound();
         }
+        
+        var deletedPayload = new TaskDeletedPayload
+        {
+            TaskId = task.Id!,
+            Type = task.Type,
+            Status = task.Status
+        };
 
         // Позначаємо задачу як видалену, не стираючи документ з MongoDB.
         task.DeletedAt = DateTime.UtcNow;
@@ -209,6 +266,19 @@ public static class TaskEndpoints
             x => x.Id == id,
             task,
             cancellationToken: cancellationToken);
+        
+        await eventPublisher.PublishAsync(
+            new TaskEventEnvelope<TaskDeletedPayload>
+            {
+                EventId = Guid.NewGuid(),
+                EventType = "TaskDeleted",
+                OccurredAt = DateTime.UtcNow,
+                AggregateId = task.Id!,
+                AggregateType = "Task",
+                Version = 1,
+                Payload = deletedPayload
+            },
+            cancellationToken);
 
         Log.Information("Task {TaskId} deleted", task.Id);
 
