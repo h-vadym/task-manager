@@ -51,6 +51,7 @@ public static class TaskEndpoints
         CreateTaskRequest request,
         IValidator<CreateTaskRequest> validator,
         IMongoDatabase database,
+        // Через publisher надсилаємо подію лише після успішного збереження задачі.
         ITaskEventPublisher eventPublisher,
         CancellationToken cancellationToken)
     {
@@ -83,7 +84,8 @@ public static class TaskEndpoints
 
         // Асинхронно додаємо задачу до MongoDB.
         await tasks.InsertOneAsync(task, cancellationToken: cancellationToken);
-        
+
+        // MongoDB вже згенерувала Id і зберегла задачу, тому публікуємо TaskCreated.
         await eventPublisher.PublishAsync(
             new TaskEventEnvelope<TaskCreatedPayload>
             {
@@ -113,6 +115,7 @@ public static class TaskEndpoints
         UpdateTaskRequest request,
         IValidator<UpdateTaskRequest> validator,
         IMongoDatabase database,
+        // Через publisher надсилаємо подію про успішне оновлення задачі.
         ITaskEventPublisher eventPublisher,
         CancellationToken cancellationToken)
     {
@@ -145,7 +148,7 @@ public static class TaskEndpoints
             // Повертаємо 404, якщо задачі з таким id не існує.
             return Results.NotFound();
         }
-        
+        // Зберігаємо стан до змін: він стане частиною поля payload.old у TaskUpdated.
         var oldState = new TaskState
         {
             Type = task.Type,
@@ -195,7 +198,8 @@ public static class TaskEndpoints
             x => x.Id == id,
             task,
             cancellationToken: cancellationToken);
-        
+
+        // Після успішного запису в MongoDB публікуємо старий і новий стан задачі.
         await eventPublisher.PublishAsync(
             new TaskEventEnvelope<TaskUpdatedPayload>
             {
@@ -226,6 +230,7 @@ public static class TaskEndpoints
     private static async Task<IResult> DeleteTask(
         string id,
         IMongoDatabase database,
+        // Через publisher надсилаємо подію про успішне soft-delete задачі.
         ITaskEventPublisher eventPublisher,
         CancellationToken cancellationToken)
     {
@@ -248,7 +253,7 @@ public static class TaskEndpoints
             // Повертаємо 404, якщо задачі не існує або її вже видалено.
             return Results.NotFound();
         }
-        
+        // Зберігаємо потрібні для події поля до позначення задачі як видаленої.
         var deletedPayload = new TaskDeletedPayload
         {
             TaskId = task.Id!,
@@ -266,7 +271,8 @@ public static class TaskEndpoints
             x => x.Id == id,
             task,
             cancellationToken: cancellationToken);
-        
+
+        // Після успішного soft-delete у MongoDB публікуємо TaskDeleted.
         await eventPublisher.PublishAsync(
             new TaskEventEnvelope<TaskDeletedPayload>
             {
