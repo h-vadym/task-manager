@@ -1,4 +1,4 @@
-using Task.Api.Events;
+using Task.Contracts.Events;
 
 namespace Task.Api.Messaging;
 

@@ -1,4 +1,4 @@
-namespace Task.Api.Events;
+namespace Task.Contracts.Events;
 
 // Дані про стан задачі до та після оновлення.
 public sealed class TaskUpdatedPayload

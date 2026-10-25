@@ -16,6 +16,14 @@ var rabbitMq = builder.AddRabbitMQ("rabbitmq")
     // Зберігаємо стан RabbitMQ, зокрема черги й повідомлення, у Docker volume між перезапусками.
     .WithDataVolume();
 
+// Додаємо PostgreSQL як ресурс Aspire.
+var postgres = builder.AddPostgres("postgres")
+    // Зберігаємо дані PostgreSQL у Docker volume між перезапусками.
+    .WithDataVolume();
+
+// Створюємо окрему базу даних для аналітичної проєкції задач.
+var analyticsDatabase = postgres.AddDatabase("analyticsdb");
+
 // Реєструємо проєкт Task.Api як сервіс, яким керуватиме Aspire.
 builder.AddProject<Projects.Task_Api>("task-api")
     // Передаємо API налаштування підключення до бази tasksdb.
@@ -26,6 +34,17 @@ builder.AddProject<Projects.Task_Api>("task-api")
     .WaitFor(mongo)
     // Не запускаємо API, доки RabbitMQ не буде готовий приймати з'єднання.
     .WaitFor(rabbitMq);
+
+// Реєструємо фоновий сервіс, який оброблятиме події задач для аналітики.
+builder.AddProject<Projects.Task_Analytics>("task-analytics")
+    // Передаємо Worker-у параметри підключення до RabbitMQ.
+    .WithReference(rabbitMq)
+    // Передаємо Worker-у параметри підключення до PostgreSQL analyticsdb.
+    .WithReference(analyticsDatabase)
+    // Не запускаємо Worker, доки RabbitMQ не готовий.
+    .WaitFor(rabbitMq)
+    // Не запускаємо Worker, доки PostgreSQL не готовий.
+    .WaitFor(postgres);
 
 // Збираємо конфігурацію розподіленого застосунку та запускаємо Aspire.
 builder.Build().Run();

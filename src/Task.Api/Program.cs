@@ -46,8 +46,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 // Реєструємо валідатор даних для створення задачі.
 builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
-// Реєструємо валідатор даних для часткового оновлення задачі.
-builder.Services.AddScoped<IValidator<UpdateTaskRequest>, UpdateTaskRequestValidator>();
+// Реєструємо валідатор для повної заміни задачі через PUT.
+builder.Services.AddScoped<IValidator<ReplaceTaskRequest>, ReplaceTaskRequestValidator>();
+// Реєструємо валідатор для зміни лише статусу через PATCH /status.
+builder.Services.AddScoped<IValidator<ChangeTaskStatusRequest>, ChangeTaskStatusRequestValidator>();
 // Створюємо RabbitMQ exchange, queue і binding під час запуску API.
 builder.Services.AddHostedService<RabbitMqTopologyInitializer>();
 // Реєструємо сервіс, через який endpoint-и публікуватимуть події задач.

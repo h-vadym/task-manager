@@ -4,7 +4,7 @@ using MongoDB.Driver;
 using Serilog;
 using Task.Api.Contracts;
 using Task.Api.Models;
-using Task.Api.Events;
+using Task.Contracts.Events;
 using Task.Api.Messaging;
 
 namespace Task.Api.Endpoints;
@@ -13,22 +13,47 @@ public static class TaskEndpoints
 {
     public static IEndpointRouteBuilder MapTaskEndpoints(this IEndpointRouteBuilder app)
     {
-        // Створюємо групу маршрутів зі спільним префіксом /tasks.
-        var tasks = app.MapGroup("/tasks")
+        // Створюємо групу маршрутів зі спільним префіксом /api/tasks.
+        var tasks = app.MapGroup("/api/tasks")
             // Групуємо маршрути у секції Tasks в Swagger.
             .WithTags("Tasks");
 
-        // Реєструємо маршрут для отримання всіх задач: GET /tasks.
+        // Реєструємо маршрут для отримання всіх задач: GET /api/tasks.
         tasks.MapGet("", GetAllTasks);
-        // Реєструємо маршрут для створення задачі: POST /tasks.
+        // Реєструємо маршрут для отримання однієї задачі: GET /api/tasks/{id}.
+        tasks.MapGet("/{id}", GetTaskById);
+        // Реєструємо маршрут для створення задачі: POST /api/tasks.
         tasks.MapPost("", CreateTask);
-        // Реєструємо маршрут для часткового оновлення задачі: PATCH /tasks/{id}.
-        tasks.MapPatch("/{id}", UpdateTask);
-        // Реєструємо маршрут для soft delete задачі: DELETE /tasks/{id}.
+        // Реєструємо маршрут для повної заміни задачі: PUT /api/tasks/{id}.
+        tasks.MapPut("/{id}", ReplaceTask);
+        // Реєструємо маршрут для зміни лише статусу: PATCH /api/tasks/{id}/status.
+        tasks.MapPatch("/{id}/status", ChangeTaskStatus);
+        // Реєструємо маршрут для soft-delete задачі: DELETE /api/tasks/{id}.
         tasks.MapDelete("/{id}", DeleteTask);
 
         // Повертаємо застосунок, щоб за потреби продовжити налаштування маршрутів.
         return app;
+    }
+    
+    private static async Task<IResult> GetTaskById(
+        string id,
+        IMongoDatabase database,
+        CancellationToken cancellationToken)
+    {
+        // Перевіряємо, що id має формат MongoDB ObjectId.
+        if (!ObjectId.TryParse(id, out _))
+        {
+            return Results.BadRequest(new { message = "Invalid task id." });
+        }
+
+        // Шукаємо активну задачу: soft-deleted записи не повертаємо.
+        var task = await database
+            .GetCollection<TaskItem>("tasks")
+            .Find(x => x.Id == id && x.DeletedAt == null)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Повертаємо 404, якщо задача відсутня або видалена.
+        return task is null ? Results.NotFound() : Results.Ok(task);
     }
 
     private static async Task<IResult> GetAllTasks(
@@ -98,8 +123,8 @@ public static class TaskEndpoints
                 Payload = new TaskCreatedPayload
                 {
                     TaskId = task.Id!,
-                    Type = task.Type,
-                    Status = task.Status
+                    Type = ToEventType(task.Type),
+                    Status = ToEventStatus(task.Status)
                 }
             },
             cancellationToken);
@@ -109,121 +134,128 @@ public static class TaskEndpoints
         // Повертаємо створену задачу зі статусом 201 Created.
         return Results.Json(task, statusCode: StatusCodes.Status201Created);
     }
-
-    private static async Task<IResult> UpdateTask(
+    
+    private static async Task<IResult> ReplaceTask(
         string id,
-        UpdateTaskRequest request,
-        IValidator<UpdateTaskRequest> validator,
+        ReplaceTaskRequest request,
+        IValidator<ReplaceTaskRequest> validator,
         IMongoDatabase database,
-        // Через publisher надсилаємо подію про успішне оновлення задачі.
         ITaskEventPublisher eventPublisher,
         CancellationToken cancellationToken)
     {
-        // Перевіряємо, що параметр маршруту має формат MongoDB ObjectId.
+        // Перевіряємо формат MongoDB id.
         if (!ObjectId.TryParse(id, out _))
         {
-            // Повертаємо 400, якщо формат ідентифікатора некоректний.
             return Results.BadRequest(new { message = "Invalid task id." });
         }
 
-        // Запускаємо правила FluentValidation для даних оновлення.
         var validationResult = await validator.ValidateAsync(request, cancellationToken);
 
         if (!validationResult.IsValid)
         {
-            // Повертаємо 400 Bad Request та перелік помилок валідації.
             return Results.ValidationProblem(validationResult.ToDictionary());
         }
 
-        // Отримуємо колекцію задач із MongoDB.
         var tasks = database.GetCollection<TaskItem>("tasks");
-        // Шукаємо задачу за її ідентифікатором.
+
+        // Шукаємо лише активну задачу.
         var task = await tasks
-            // Не дозволяємо оновлювати задачу, яку вже видалено.
             .Find(x => x.Id == id && x.DeletedAt == null)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (task is null)
         {
-            // Повертаємо 404, якщо задачі з таким id не існує.
             return Results.NotFound();
         }
-        // Зберігаємо стан до змін: він стане частиною поля payload.old у TaskUpdated.
+
+        // Фіксуємо стан, який потрапить у payload.old події TaskUpdated.
         var oldState = new TaskState
         {
-            Type = task.Type,
-            Status = task.Status
+            Type = ToEventType(task.Type),
+            Status = ToEventStatus(task.Status)
         };
 
-        // Оновлюємо title лише тоді, коли клієнт передав це поле.
-        if (request.Title is not null)
-        {
-            task.Title = request.Title;
-        }
-
-        // Оновлюємо description лише тоді, коли клієнт передав це поле.
-        if (request.Description is not null)
-        {
-            task.Description = request.Description;
-        }
-
-        // Оновлюємо type лише тоді, коли клієнт передав це поле.
-        if (request.Type is not null)
-        {
-            task.Type = request.Type.Value;
-        }
-
-        // Оновлюємо status лише тоді, коли клієнт передав це поле.
-        if (request.Status is not null)
-        {
-            task.Status = request.Status.Value;
-        }
-
-        // Оновлюємо priority лише тоді, коли клієнт передав це поле.
-        if (request.Priority is not null)
-        {
-            task.Priority = request.Priority.Value;
-        }
-
-        // Оновлюємо assigneeId лише тоді, коли клієнт передав це поле.
-        if (request.AssigneeId is not null)
-        {
-            task.AssigneeId = request.AssigneeId;
-        }
-        // Фіксуємо час останньої зміни задачі в UTC.
+        // PUT замінює повний стан задачі.
+        task.Title = request.Title!;
+        task.Description = request.Description!;
+        task.Type = request.Type!.Value;
+        task.Status = request.Status!.Value;
+        task.Priority = request.Priority!.Value;
+        task.AssigneeId = request.AssigneeId;
         task.UpdatedAt = DateTime.UtcNow;
 
-        // Замінюємо знайдений документ його оновленою версією.
         await tasks.ReplaceOneAsync(
             x => x.Id == id,
             task,
             cancellationToken: cancellationToken);
 
-        // Після успішного запису в MongoDB публікуємо старий і новий стан задачі.
-        await eventPublisher.PublishAsync(
-            new TaskEventEnvelope<TaskUpdatedPayload>
-            {
-                EventId = Guid.NewGuid(),
-                EventType = "TaskUpdated",
-                OccurredAt = DateTime.UtcNow,
-                AggregateId = task.Id!,
-                AggregateType = "Task",
-                Version = 1,
-                Payload = new TaskUpdatedPayload
-                {
-                    Old = oldState,
-                    New = new TaskState
-                    {
-                        Type = task.Type,
-                        Status = task.Status
-                    }
-                }
-            },
+        await PublishTaskUpdatedEventAsync(
+            task,
+            oldState,
+            eventPublisher,
             cancellationToken);
 
-        Log.Information("Task {TaskId} updated", task.Id);
+        Log.Information("Task {TaskId} replaced", task.Id);
 
-        // Повертаємо оновлену задачу зі статусом 200 OK.
+        return Results.Ok(task);
+    }
+
+    private static async Task<IResult> ChangeTaskStatus(
+        string id,
+        ChangeTaskStatusRequest request,
+        IValidator<ChangeTaskStatusRequest> validator,
+        IMongoDatabase database,
+        ITaskEventPublisher eventPublisher,
+        CancellationToken cancellationToken)
+    {
+        // Перевіряємо формат MongoDB id.
+        if (!ObjectId.TryParse(id, out _))
+        {
+            return Results.BadRequest(new { message = "Invalid task id." });
+        }
+
+        var validationResult = await validator.ValidateAsync(request, cancellationToken);
+
+        if (!validationResult.IsValid)
+        {
+            return Results.ValidationProblem(validationResult.ToDictionary());
+        }
+
+        var tasks = database.GetCollection<TaskItem>("tasks");
+
+        var task = await tasks
+            .Find(x => x.Id == id && x.DeletedAt == null)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (task is null)
+        {
+            return Results.NotFound();
+        }
+
+        // Зберігаємо попередній type/status для події.
+        var oldState = new TaskState
+        {
+            Type = ToEventType(task.Type),
+            Status = ToEventStatus(task.Status)
+        };
+
+        // PATCH /status змінює тільки статус і час оновлення.
+        task.Status = request.Status!.Value;
+        task.UpdatedAt = DateTime.UtcNow;
+
+        await tasks.ReplaceOneAsync(
+            x => x.Id == id,
+            task,
+            cancellationToken: cancellationToken);
+
+        await PublishTaskUpdatedEventAsync(
+            task,
+            oldState,
+            eventPublisher,
+            cancellationToken);
+
+        Log.Information("Task {TaskId} status changed to {Status}", task.Id, task.Status);
+
         return Results.Ok(task);
     }
 
@@ -257,8 +289,8 @@ public static class TaskEndpoints
         var deletedPayload = new TaskDeletedPayload
         {
             TaskId = task.Id!,
-            Type = task.Type,
-            Status = task.Status
+            Type = ToEventType(task.Type),
+            Status = ToEventStatus(task.Status)
         };
 
         // Позначаємо задачу як видалену, не стираючи документ з MongoDB.
@@ -291,4 +323,52 @@ public static class TaskEndpoints
         // Повертаємо 204 No Content після успішного видалення.
         return Results.NoContent();
     }
+    
+    // Формує та публікує TaskUpdated після успішної зміни задачі.
+    private static ValueTask PublishTaskUpdatedEventAsync(
+        TaskItem task,
+        TaskState oldState,
+        ITaskEventPublisher eventPublisher,
+        CancellationToken cancellationToken)
+    {
+        return eventPublisher.PublishAsync(
+            new TaskEventEnvelope<TaskUpdatedPayload>
+            {
+                EventId = Guid.NewGuid(),
+                EventType = TaskEventTypes.Updated,
+                OccurredAt = DateTime.UtcNow,
+                AggregateId = task.Id!,
+                AggregateType = "Task",
+                Version = 1,
+                Payload = new TaskUpdatedPayload
+                {
+                    Old = oldState,
+                    New = new TaskState
+                    {
+                        Type = ToEventType(task.Type),
+                        Status = ToEventStatus(task.Status)
+                    }
+                }
+            },
+            cancellationToken);
+    }
+    
+    // Перетворює внутрішній enum API на стабільне значення transport-контракту.
+    private static string ToEventType(TaskItemType type) => type switch
+    {
+        TaskItemType.Design => "design",
+        TaskItemType.Develop => "develop",
+        TaskItemType.Review => "review",
+        TaskItemType.Testing => "testing",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+    };
+
+    // Перетворює внутрішній enum API на стабільне значення transport-контракту.
+    private static string ToEventStatus(TaskItemStatus status) => status switch
+    {
+        TaskItemStatus.ToDo => "to do",
+        TaskItemStatus.InProgress => "in progress",
+        TaskItemStatus.Done => "done",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, null)
+    };
 }

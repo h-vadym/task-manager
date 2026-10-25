@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RabbitMQ.Client;
-using Task.Api.Events;
+using Task.Contracts.Events;
+using Task.Contracts.Messaging;
 
 namespace Task.Api.Messaging;
 

@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/AppHost/AppHost.csproj" />
     <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" />
+    <Project Path="src/Task.Analytics/Task.Analytics.csproj" />
     <Project Path="src/Task.Api/Task.Api.csproj" />
+    <Project Path="src/Task.Contracts/Task.Contracts.csproj" />
   </Folder>
 </Solution>

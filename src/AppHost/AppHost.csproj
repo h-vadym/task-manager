@@ -2,10 +2,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Task.Api\Task.Api.csproj" />
+    <ProjectReference Include="..\Task.Analytics\Task.Analytics.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.MongoDB" Version="13.6.0" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.6.0" />
     <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.6.0" />
   </ItemGroup>
 

@@ -1,4 +1,5 @@
 using RabbitMQ.Client;
+using Task.Contracts.Messaging;
 
 namespace Task.Api.Messaging;
 
