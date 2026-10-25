@@ -46,5 +46,12 @@ builder.AddProject<Projects.Task_Analytics>("task-analytics")
     // Не запускаємо Worker, доки PostgreSQL не готовий.
     .WaitFor(postgres);
 
+// Реєструємо HTTP API для читання аналітичних даних із PostgreSQL.
+builder.AddProject<Projects.Task_Analytics_Api>("task-analytics-api")
+    // Передаємо API connection string до бази analyticsdb.
+    .WithReference(analyticsDatabase)
+    // Не запускаємо API, доки PostgreSQL не стане доступним.
+    .WaitFor(postgres);
+
 // Збираємо конфігурацію розподіленого застосунку та запускаємо Aspire.
 builder.Build().Run();

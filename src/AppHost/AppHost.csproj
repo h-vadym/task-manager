@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Task.Api\Task.Api.csproj" />
     <ProjectReference Include="..\Task.Analytics\Task.Analytics.csproj" />
+    <ProjectReference Include="..\Task.Analytics.Api\Task.Analytics.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
