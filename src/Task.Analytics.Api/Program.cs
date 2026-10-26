@@ -24,8 +24,15 @@ builder.Services.AddEndpointsApiExplorer();
 
 // Додаємо Swagger/OpenAPI для ручної перевірки Analytics API.
 builder.Services.AddSwaggerGen();
+// Дозволяємо клієнтському застосунку читати аналітику з окремого API.
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+    .AllowAnyOrigin()
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
 
 var app = builder.Build();
+
+app.UseCors();
 
 // Мапимо стандартні endpoint-и Aspire, зокрема /health та /alive.
 app.MapDefaultEndpoints();

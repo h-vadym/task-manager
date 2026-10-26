@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme { --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif; }
+
+body { margin: 0; min-width: 320px; background: #020617; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .65; }
+
+@layer components {
+  .field { @apply w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-lime-300/70 focus:ring-2 focus:ring-lime-300/15; }
+  .label { @apply text-sm font-medium text-slate-300; }
+  .btn-primary { @apply rounded-xl bg-lime-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300 focus:ring-offset-2 focus:ring-offset-slate-950; }
+  .btn-secondary { @apply rounded-xl px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white; }
+  .badge { @apply rounded-full px-2.5 py-1 text-xs font-medium; }
+  .badge-design { @apply bg-fuchsia-300/15 text-fuchsia-200; }
+  .badge-develop { @apply bg-sky-300/15 text-sky-200; }
+  .badge-review { @apply bg-violet-300/15 text-violet-200; }
+  .badge-testing { @apply bg-amber-300/15 text-amber-200; }
+  .priority { @apply text-xs; }
+  .priority-high { @apply text-rose-300; }
+  .priority-normal { @apply text-slate-400; }
+  .priority-low { @apply text-slate-500; }
+}

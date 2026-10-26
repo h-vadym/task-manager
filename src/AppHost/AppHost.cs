@@ -25,7 +25,7 @@ var postgres = builder.AddPostgres("postgres")
 var analyticsDatabase = postgres.AddDatabase("analyticsdb");
 
 // Реєструємо проєкт Task.Api як сервіс, яким керуватиме Aspire.
-builder.AddProject<Projects.Task_Api>("task-api")
+var taskApi = builder.AddProject<Projects.Task_Api>("task-api")
     // Передаємо API налаштування підключення до бази tasksdb.
     .WithReference(tasksDatabase)
     // Передаємо API налаштування підключення до RabbitMQ.
@@ -47,11 +47,18 @@ builder.AddProject<Projects.Task_Analytics>("task-analytics")
     .WaitFor(postgres);
 
 // Реєструємо HTTP API для читання аналітичних даних із PostgreSQL.
-builder.AddProject<Projects.Task_Analytics_Api>("task-analytics-api")
+var analyticsApi = builder.AddProject<Projects.Task_Analytics_Api>("task-analytics-api")
     // Передаємо API connection string до бази analyticsdb.
     .WithReference(analyticsDatabase)
     // Не запускаємо API, доки PostgreSQL не стане доступним.
     .WaitFor(postgres);
+
+// Vite-клієнт отримує адреси обох API від Aspire та запускається разом із системою.
+builder.AddViteApp("task-web", "../Task.Web")
+    .WithReference(taskApi)
+    .WithReference(analyticsApi)
+    .WithEnvironment("VITE_TASK_API_URL", taskApi.GetEndpoint("http"))
+    .WithEnvironment("VITE_ANALYTICS_API_URL", analyticsApi.GetEndpoint("http"));
 
 // Збираємо конфігурацію розподіленого застосунку та запускаємо Aspire.
 builder.Build().Run();

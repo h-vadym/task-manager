@@ -44,6 +44,11 @@ builder.Services.AddSingleton<IMongoDatabase>(sp =>
 builder.Services.AddEndpointsApiExplorer();
 // Додаємо Swagger, який показує та дозволяє викликати HTTP API в development-режимі.
 builder.Services.AddSwaggerGen();
+// Дозволяємо Vite-клієнту, який запускає Aspire, звертатися до API в development.
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+    .AllowAnyOrigin()
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
 // Реєструємо валідатор даних для створення задачі.
 builder.Services.AddScoped<IValidator<CreateTaskRequest>, CreateTaskRequestValidator>();
 // Реєструємо валідатор для повної заміни задачі через PUT.
@@ -57,6 +62,8 @@ builder.Services.AddSingleton<ITaskEventPublisher, RabbitMqTaskEventPublisher>()
 
 // Будуємо WebApplication після завершення реєстрації всіх залежностей і налаштувань.
 var app = builder.Build();
+
+app.UseCors();
 
 // Мапимо дефолтні ендпоінти (зокрема /health)
 app.MapDefaultEndpoints();

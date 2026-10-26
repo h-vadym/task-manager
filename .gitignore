@@ -10,3 +10,9 @@
 
 # Local logs
 *.log
+
+# JavaScript dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+.env.local
