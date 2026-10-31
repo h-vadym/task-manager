@@ -32,8 +32,7 @@ builder.Services.AddSingleton<ITaskEventProcessor, TaskEventProcessor>();
 // Застосовуємо EF Core migrations до запуску RabbitMQ consumer-а.
 builder.Services.AddHostedService<DatabaseMigrationService>();
 
-// Реєструємо фоновий сервіс, який зараз лише пише тестові логи.
-// На наступному кроці він стане RabbitMQ consumer-ом.
+// Реєструємо фоновий сервіс, який стане RabbitMQ consumer-ом.
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();
